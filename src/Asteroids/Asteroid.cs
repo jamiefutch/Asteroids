@@ -1,47 +1,109 @@
-using System.Diagnostics.CodeAnalysis;
-
-namespace Asteroids
+﻿namespace Asteroids
 {
-    [SuppressMessage("ReSharper", "InconsistentNaming")]
-    [SuppressMessage("ReSharper", "FieldCanBeMadeReadOnly.Local")]
-
     public class Asteroid
     {
         public PointF Position { get; private set; }
-        public bool IsAlive { get; private set; }
-        private float rotation;
+        public int Size { get; private set; } // 0=small, 1=medium, 2=large
+        public float Radius { get; private set; }
+        
         private float speed;
-        private static Random rand = new Random();
-
-        public Asteroid(Size clientSize)
+        private float angle;
+        private PointF[] points;
+        
+        public Asteroid(PointF position, int size, Random random, float speed = 0, float angle = 0)
         {
-            Position = new PointF(rand.Next(clientSize.Width), rand.Next(clientSize.Height));
-            rotation = (float)(rand.NextDouble() * Math.PI * 2);
-            speed = (float)(rand.NextDouble() * 3 + 1);
-            IsAlive = true;
+            Position = position;
+            Size = size;
+            
+            // Set size-dependent properties
+            switch (Size)
+            {
+                case 0: // Small
+                    Radius = 10;
+                    break;
+                case 1: // Medium
+                    Radius = 20;
+                    break;
+                case 2: // Large
+                    Radius = 40;
+                    break;
+            }
+            
+            // If speed/angle weren't specified, randomize them
+            if (speed == 0)
+                this.speed = (float)(random.NextDouble() * 2 + 0.5);
+            else
+                this.speed = speed;
+                
+            if (angle == 0)
+                this.angle = (float)(random.NextDouble() * Math.PI * 2);
+            else
+                this.angle = angle;
+                
+            // Generate irregular polygon points for the asteroid
+            GeneratePoints(random);
         }
 
-        public void Update(Size clientSize)
+        private void GeneratePoints(Random random)
         {
+            int numPoints = 8 + Size * 2; // More points for larger asteroids
+            points = new PointF[numPoints];
+            
+            for (int i = 0; i < numPoints; i++)
+            {
+                float angle = (float)(i * 2 * Math.PI / numPoints);
+                float variance = (float)(random.NextDouble() * 0.4 + 0.8); // 0.8 to 1.2
+                float radius = Radius * variance;
+                
+                points[i] = new PointF(
+                    (float)Math.Cos(angle) * radius,
+                    (float)Math.Sin(angle) * radius
+                );
+            }
+        }
+
+        public void Update(Size playArea)
+        {
+            // Move asteroid
+            float dx = (float)Math.Cos(angle) * speed;
+            float dy = (float)Math.Sin(angle) * speed;
+            
             Position = new PointF(
-                (Position.X + (float)Math.Cos(rotation) * speed + clientSize.Width) % clientSize.Width,
-                (Position.Y + (float)Math.Sin(rotation) * speed + clientSize.Height) % clientSize.Height
+                (Position.X + dx + playArea.Width) % playArea.Width,
+                (Position.Y + dy + playArea.Height) % playArea.Height
             );
         }
 
         public void Draw(Graphics g)
         {
-            PointF[] asteroidPoints = new PointF[]
+            PointF[] drawPoints = new PointF[points.Length];
+            for (int i = 0; i < points.Length; i++)
             {
-                new PointF(Position.X + 10, Position.Y),
-                new PointF(Position.X + 5, Position.Y + 10),
-                new PointF(Position.X - 5, Position.Y + 10),
-                new PointF(Position.X - 10, Position.Y),
-                new PointF(Position.X - 5, Position.Y - 10),
-                new PointF(Position.X + 5, Position.Y - 10)
-            };
-            g.DrawPolygon(Pens.White, asteroidPoints);
-
+                drawPoints[i] = new PointF(
+                    Position.X + points[i].X,
+                    Position.Y + points[i].Y
+                );
+            }
+            
+            g.DrawPolygon(Pens.White, drawPoints);
+        }
+        
+        public bool CollidesWith(Bullet bullet)
+        {
+            float distance = (float)Math.Sqrt(
+                Math.Pow(Position.X - bullet.Position.X, 2) + 
+                Math.Pow(Position.Y - bullet.Position.Y, 2)
+            );
+            return distance < Radius;
+        }
+        
+        public bool CollidesWith(Ship ship)
+        {
+            float distance = (float)Math.Sqrt(
+                Math.Pow(Position.X - ship.Position.X, 2) + 
+                Math.Pow(Position.Y - ship.Position.Y, 2)
+            );
+            return distance < Radius + 10; // Ship radius approximation
         }
     }
 }

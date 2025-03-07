@@ -1,43 +1,56 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Asteroids
 {
-    [SuppressMessage("ReSharper", "InconsistentNaming")]
-    [SuppressMessage("ReSharper", "FieldCanBeMadeReadOnly.Local")]
-
     public class Bullet
     {
         public PointF Position { get; private set; }
-        public bool IsAlive { get; private set; }
-        private float rotation;
-        private float speed;
+        public bool IsActive { get; private set; }
+        
+        private float angle;
+        private const float Speed = 7.0f;
         private int lifetime;
-
-        public Bullet(PointF startPosition, float rotation)
+        private const int MaxLifetime = 60; // 1 second at 60 FPS
+        
+        public Bullet(PointF position, float shipAngle)
         {
-            Position = startPosition;
-            this.rotation = rotation;
-            speed = 5;
-            lifetime = 60; // 1 second at 60 FPS
-            IsAlive = true;
+            // Start bullet at the nose of the ship
+            Position = new PointF(
+                position.X + (float)Math.Cos(shipAngle) * 20,
+                position.Y + (float)Math.Sin(shipAngle) * 20
+            );
+            angle = shipAngle;
+            IsActive = true;
+            lifetime = MaxLifetime;
         }
 
-        public void Update(Size clientSize)
+        public void Update(Size playArea)
         {
+            if (!IsActive) return;
+            
+            // Move bullet
             Position = new PointF(
-                (Position.X + (float)Math.Cos(rotation) * speed + clientSize.Width) % clientSize.Width,
-                (Position.Y + (float)Math.Sin(rotation) * speed + clientSize.Height) % clientSize.Height
+                (Position.X + (float)Math.Cos(angle) * Speed + playArea.Width) % playArea.Width,
+                (Position.Y + (float)Math.Sin(angle) * Speed + playArea.Height) % playArea.Height
             );
+            
+            // Reduce lifetime
             lifetime--;
             if (lifetime <= 0)
             {
-                IsAlive = false;
+                IsActive = false;
             }
         }
 
         public void Draw(Graphics g)
         {
-            g.DrawEllipse(Pens.White, Position.X - 2, Position.Y - 2, 4, 4);
+            if (!IsActive) return;
+            
+            g.FillEllipse(
+                Brushes.White,
+                Position.X - 2,
+                Position.Y - 2,
+                4,
+                4
+            );
         }
     }
 }

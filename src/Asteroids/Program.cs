@@ -1,10 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Asteroids
 {
-    [SuppressMessage("ReSharper", "InconsistentNaming")]
-    [SuppressMessage("ReSharper", "FieldCanBeMadeReadOnly.Local")]
-
     static class Program
     {
         [STAThread]
