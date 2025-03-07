@@ -1,6 +1,10 @@
-﻿using Microsoft.ML;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Asteroids;
+using Microsoft.ML;
 using Microsoft.ML.Data;
-using Microsoft.ML.FastTree;
 
 namespace Asteroids
 {
@@ -38,6 +42,9 @@ namespace Asteroids
                 {
                     model = mlContext.Model.Load(ModelPath, out _);
                     Console.WriteLine("Model loaded successfully!");
+                    
+                    // Initialize prediction engine when model is loaded
+                    predictionEngine = mlContext.Model.CreatePredictionEngine<GameState, ActionPrediction>(model);
                 }
                 catch (Exception ex)
                 {
@@ -68,7 +75,12 @@ namespace Asteroids
                 return;
             }
             
-            predictionEngine = mlContext.Model.CreatePredictionEngine<GameState, ActionPrediction>(model);
+            // This is now redundant if already initialized in constructor or after training,
+            // but keeping it for safety
+            if (predictionEngine == null)
+            {
+                predictionEngine = mlContext.Model.CreatePredictionEngine<GameState, ActionPrediction>(model);
+            }
         }
 
         public void StopAI()
@@ -131,7 +143,7 @@ namespace Asteroids
             
             // Choose action (exploration vs exploitation)
             int action;
-            if (random.NextDouble() < explorationRate || model == null)
+            if (random.NextDouble() < explorationRate || model == null || predictionEngine == null)
             {
                 // Explore: choose random action
                 action = random.Next(5);
@@ -141,7 +153,7 @@ namespace Asteroids
                 // Exploit: use model to predict best action
                 var gameState = new GameState { Features = state };
                 var prediction = predictionEngine.Predict(gameState);
-                action = prediction.PredictedAction;
+                action = (int)prediction.PredictedAction;
             }
             
             // Take action
@@ -179,7 +191,7 @@ namespace Asteroids
             // Use model to predict action
             var gameState = new GameState { Features = state };
             var prediction = predictionEngine.Predict(gameState);
-            int action = prediction.PredictedAction;
+            int action = (int)prediction.PredictedAction;
             
             // Take action
             game.PerformAction(action);
@@ -231,7 +243,7 @@ namespace Asteroids
                 trainingData.Select(e => new GameState
                 {
                     Features = e.State,
-                    Label = e.Action,
+                    Label = (uint)e.Action,
                     Weight = e.Reward
                 })
             );
@@ -247,7 +259,7 @@ namespace Asteroids
             // Train model
             model = pipeline.Fit(data);
             
-            // Create prediction engine for future predictions
+            // Create prediction engine for future predictions - initialize here
             predictionEngine = mlContext.Model.CreatePredictionEngine<GameState, ActionPrediction>(model);
             
             // Save model
