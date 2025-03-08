@@ -18,6 +18,7 @@ namespace Asteroids
         private const int MaxTrainingExamples = 10000;
         private const int TrainingEpisodes = 1000;
         private const string ModelPath = "asteroid_model.zip";
+        private const int EpisodesPerTraining = 10;
         
         public int CurrentEpisode { get; private set; }
 
@@ -119,7 +120,7 @@ namespace Asteroids
                 explorationRate = Math.Max(0.1f, explorationRate * 0.99f);
                 
                 // Save model and reset training data periodically
-                if (gameCount % 100 == 0)
+                if (gameCount % EpisodesPerTraining == 0)
                 {
                     CurrentEpisode++;
                     TrainAndSaveModel();
