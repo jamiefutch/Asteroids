@@ -1,4 +1,5 @@
-﻿using Microsoft.ML;
+﻿using System.Diagnostics;
+using Microsoft.ML;
 using Microsoft.ML.Data;
 
 namespace Asteroids
@@ -16,10 +17,10 @@ namespace Asteroids
         private float explorationRate;
         private int gameCount;
         private const int MaxTrainingExamples = 10000;
-        private const int TrainingEpisodes = 1000;
+        private const int TrainingEpisodes = 10000;
         private const string ModelPath = "asteroid_model.zip";
-        private const int EpisodesPerTraining = 10;
-        
+        private const int EpisodesPerTraining = 100;
+
         public int CurrentEpisode { get; private set; }
 
         public AIPlayer(Game game)
@@ -30,21 +31,21 @@ namespace Asteroids
             trainingData = new List<TrainingExample>();
             explorationRate = 1.0f;
             CurrentEpisode = 0;
-            
+
             // Try to load existing model
             if (File.Exists(ModelPath))
             {
                 try
                 {
                     model = mlContext.Model.Load(ModelPath, out _);
-                    Console.WriteLine("Model loaded successfully!");
-                    
+                    Console.WriteLine(@"Model loaded successfully!");
+
                     // Initialize prediction engine when model is loaded
                     predictionEngine = mlContext.Model.CreatePredictionEngine<GameState, ActionPrediction>(model);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading model: {ex.Message}");
+                    Console.WriteLine($@"Error loading model: {ex.Message}");
                     model = null;
                 }
             }
@@ -64,13 +65,13 @@ namespace Asteroids
         {
             isTraining = false;
             isAIPlaying = true;
-            
+
             if (model == null)
             {
-                Console.WriteLine("No trained model available.");
+                Console.WriteLine(@"No trained model available.");
                 return;
             }
-            
+
             // This is now redundant if already initialized in constructor or after training,
             // but keeping it for safety
             if (predictionEngine == null)
@@ -104,21 +105,24 @@ namespace Asteroids
             {
                 // Get final game state and record
                 float[] finalState = game.GetGameState();
-                float reward = game.IsGameOver ? -10 : 10; // Negative reward for dying, positive for clearing level
-                
+                float reward = game.IsGameOver ? 1 : 100; // Negative reward for dying, positive for clearing level
+
                 // Store example with weighted reward
                 foreach (var example in trainingData)
                 {
                     example.Reward = reward;
                 }
-                
+
                 // Start a new game
+                Console.WriteLine($@"Game: {gameCount + 1}	Score: {game.Score}");
+                Debug.WriteLine($@"Game: {gameCount + 1}	Score: {game.Score}");
+
                 game.Reset();
                 gameCount++;
-                
+
                 // Adjust exploration rate
                 explorationRate = Math.Max(0.1f, explorationRate * 0.99f);
-                
+
                 // Save model and reset training data periodically
                 if (gameCount % EpisodesPerTraining == 0)
                 {
@@ -126,17 +130,17 @@ namespace Asteroids
                     TrainAndSaveModel();
                     trainingData.Clear();
                 }
-                
+
                 if (gameCount >= TrainingEpisodes)
                 {
                     isTraining = false;
                     return;
                 }
             }
-            
+
             // Get current game state
             float[] state = game.GetGameState();
-            
+
             // Choose action (exploration vs exploitation)
             int action;
             if (random.NextDouble() < explorationRate || model == null || predictionEngine == null)
@@ -151,13 +155,13 @@ namespace Asteroids
                 var prediction = predictionEngine.Predict(gameState);
                 action = (int)prediction.PredictedAction;
             }
-            
+
             // Take action
             game.PerformAction(action);
-            
+
             // Calculate immediate reward
             float immediateReward = CalculateReward();
-            
+
             // Store training example
             if (trainingData.Count < MaxTrainingExamples)
             {
@@ -168,7 +172,7 @@ namespace Asteroids
                     Reward = immediateReward
                 });
             }
-            
+
             // Update the game
             game.Update();
         }
@@ -180,18 +184,18 @@ namespace Asteroids
                 game.Reset();
                 return;
             }
-            
+
             // Get current game state
             float[] state = game.GetGameState();
-            
+
             // Use model to predict action
             var gameState = new GameState { Features = state };
             var prediction = predictionEngine.Predict(gameState);
             int action = (int)prediction.PredictedAction;
-            
+
             // Take action
             game.PerformAction(action);
-            
+
             // Update the game
             game.Update();
         }
@@ -199,16 +203,16 @@ namespace Asteroids
         private float CalculateReward()
         {
             float reward = 0;
-            
+
             // Reward for shooting asteroids
             // This will be handled by TrainAndSaveModel since we don't know immediately when points are scored
-            
+
             // Small penalty for shooting (to discourage constant shooting)
             foreach (var bullet in game.Bullets)
             {
-                reward -= 0.01f;
+                reward = 0.01f;
             }
-            
+
             // Check if ship is in danger (close to asteroids)
             foreach (var asteroid in game.Asteroids)
             {
@@ -216,65 +220,48 @@ namespace Asteroids
                     Math.Pow(game.Ship.Position.X - asteroid.Position.X, 2) +
                     Math.Pow(game.Ship.Position.Y - asteroid.Position.Y, 2)
                 );
-                
+
                 // Penalize being close to asteroids
                 if (distance < 50 + asteroid.Radius)
                 {
                     reward -= (50 + asteroid.Radius - distance) * 0.01f;
                 }
             }
-            
+
+            if (reward < 0)
+            {
+                reward = 0;
+            }
+
             return reward;
         }
+
+        
 
         private void TrainAndSaveModel()
         {
             if (trainingData.Count == 0)
                 return;
-                
-            Console.WriteLine($"Training model with {trainingData.Count} examples");
-            
+
+            Console.WriteLine($@"Training model with {trainingData.Count} examples");
+
             // Create training data view
-            var data = mlContext.Data.LoadFromEnumerable(
-                trainingData.Select(e => new GameState
-                {
-                    Features = e.State,
-                    Label = (uint)e.Action,
-                    Weight = e.Reward
-                })
-            );
-            
-            // Define pipeline
-            var pipeline = mlContext.Transforms.Concatenate("Features", "Features")
-                .Append(mlContext.Transforms.NormalizeMinMax("Features"))
-                .Append(mlContext.MulticlassClassification.Trainers.SdcaNonCalibrated(
-                    labelColumnName: "Label",
-                    featureColumnName: "Features",
-                    exampleWeightColumnName: "Weight"));
-            
-            // Train model
-            model = pipeline.Fit(data);
-            
-            // Create prediction engine for future predictions - initialize here
-            predictionEngine = mlContext.Model.CreatePredictionEngine<GameState, ActionPrediction>(model);
-            
-            // Save model
-            mlContext.Model.Save(model, data.Schema, ModelPath);
-            
-            Console.WriteLine("Model trained and saved successfully");
+
+            List<GameState> gameStates = trainingData.Select(t => new GameState
+            {
+                Features = t.State,
+                Label = t.Action,
+                Weight = t.Reward
+            }).ToList();
+
+
+            ModelTrainer mt = new ModelTrainer();
+            mt.TrainAndSaveModel(gameStates, ModelPath);
+
+            Console.WriteLine(@"Model trained and saved successfully");
         }
     }
 
-    // Classes for ML.NET
-    public class GameState
-    {
-        [VectorType(21)]
-        public float[] Features { get; set; }
-        
-        public float Weight { get; set; }
-        
-        public uint Label { get; set; }
-    }
 
     public class ActionPrediction
     {
@@ -288,5 +275,17 @@ namespace Asteroids
         public float[] State { get; set; }
         public int Action { get; set; }
         public float Reward { get; set; }
+    }
+
+    public class GameStateData
+    {
+        [LoadColumn(0)]
+        public float[] Features { get; set; }
+
+        [LoadColumn(1)]
+        public float Weight { get; set; }
+
+        [LoadColumn(2)] // n is the index of the label column
+        public float Label { get; set; }
     }
 }
